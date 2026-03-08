@@ -1,0 +1,53 @@
+{
+  "name": "cockpit",
+  "productName": "Cockpit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron GUI wrapper for GitHub Copilot CLI.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./out/main/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "build": "npm run typecheck && electron-vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "coverage": "vitest run --coverage",
+    "check": "npm run typecheck && npm run test"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.15.0",
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@primeuix/themes": "^2.0.3",
+    "pinia": "^3.0.4",
+    "primeicons": "^7.0.0",
+    "primevue": "^4.5.4",
+    "vue": "^3.5.29"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.1",
+    "@types/node": "^25.3.5",
+    "@vitejs/plugin-vue": "^6.0.4",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/ui": "^4.0.18",
+    "@vue/test-utils": "^2.4.6",
+    "electron": "^40.8.0",
+    "electron-vite": "^5.0.0",
+    "jsdom": "^28.1.0",
+    "tailwindcss": "^4.2.1",
+    "tailwindcss-primeui": "^0.6.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18",
+    "vue-tsc": "^3.2.5"
+  }
+}
