@@ -72,10 +72,13 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.threadsList, async (_event, projectId?: string) => store.getThreads(projectId));
-  ipcMain.handle(IPC_CHANNELS.threadsCreate, async (_event, projectId: string, modelId?: string) => {
-    const thread = await store.createThread(projectId, modelId);
-    return chatManager.prepareThread(thread.id);
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.threadsCreate,
+    async (_event, projectId: string, modelId?: string, reasoningLevelId?: string) => {
+      const thread = await store.createThread(projectId, modelId, reasoningLevelId);
+      return chatManager.prepareThread(thread.id);
+    }
+  );
   ipcMain.handle(
     IPC_CHANNELS.threadsRename,
     async (_event, threadId: string, title: string) => store.updateThread(threadId, { title })
@@ -94,7 +97,16 @@ function registerIpc(): void {
       const thread = await store.updateThread(threadId, { modelId });
       await store.updateSettings({ defaultModelId: modelId });
       await chatManager.restartThreadRuntime(threadId);
-      return thread;
+      return chatManager.prepareThread(thread.id);
+    }
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.threadsUpdateReasoning,
+    async (_event, threadId: string, reasoningLevelId: string) => {
+      const thread = await store.updateThread(threadId, { reasoningLevelId });
+      await store.updateSettings({ defaultReasoningLevelId: reasoningLevelId });
+      await chatManager.restartThreadRuntime(threadId);
+      return chatManager.prepareThread(thread.id);
     }
   );
 

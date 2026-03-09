@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -85,6 +85,7 @@ describe("AppStore", () => {
       await store.updateSettings({
         selectedProjectId: projectA.id,
         defaultModelId: null,
+        defaultReasoningLevelId: null,
         hiddenProjectIds: [projectA.id]
       });
       await store.removeProject(projectA.id);
@@ -101,6 +102,7 @@ describe("AppStore", () => {
         cliExecutablePath: null,
         selectedProjectId: projectB.id,
         defaultModelId: null,
+        defaultReasoningLevelId: null,
         hiddenProjectIds: []
       });
     } finally {
@@ -117,12 +119,81 @@ describe("AppStore", () => {
 
       const project = await store.createProject("/tmp/example-repo");
       await store.updateSettings({
-        defaultModelId: "gpt-5.4"
+        defaultModelId: "gpt-5.4",
+        defaultReasoningLevelId: "high"
       });
 
       const thread = await store.createThread(project.id);
 
       expect(thread.modelId).toBe("gpt-5.4");
+      expect(thread.reasoningLevelId).toBe("high");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps project ordering stable when selecting a project", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cockpit-store-"));
+
+    try {
+      const store = new AppStore(root);
+      await store.init();
+
+      const projectA = await store.createProject("/tmp/example-repo-a");
+      const projectB = await store.createProject("/tmp/example-repo-b");
+
+      expect((await store.getProjects()).map((project) => project.id)).toEqual([projectA.id, projectB.id]);
+
+      await store.selectProject(projectA.id);
+
+      expect((await store.getProjects()).map((project) => project.id)).toEqual([projectA.id, projectB.id]);
+      expect((await store.getSettings()).selectedProjectId).toBe(projectA.id);
+
+      const reopened = new AppStore(root);
+      await reopened.init();
+
+      expect((await reopened.getProjects()).map((project) => project.id)).toEqual([projectA.id, projectB.id]);
+      expect((await reopened.getSettings()).selectedProjectId).toBe(projectA.id);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("returns projects in creation order even if persisted records are shuffled", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cockpit-store-"));
+
+    try {
+      const store = new AppStore(root);
+      await store.init();
+
+      const projectA = await store.createProject("/tmp/example-repo-a");
+      const projectB = await store.createProject("/tmp/example-repo-b");
+      const projectsPath = join(root, "projects.json");
+      const persistedProjects = JSON.parse(await readFile(projectsPath, "utf8")) as Array<Record<string, unknown>>;
+
+      await writeFile(
+        projectsPath,
+        JSON.stringify(
+          [
+            {
+              ...persistedProjects[1],
+              createdAt: "2026-03-08T10:01:00.000Z"
+            },
+            {
+              ...persistedProjects[0],
+              createdAt: "2026-03-08T10:00:00.000Z"
+            }
+          ],
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const reopened = new AppStore(root);
+      await reopened.init();
+
+      expect((await reopened.getProjects()).map((project) => project.id)).toEqual([projectA.id, projectB.id]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

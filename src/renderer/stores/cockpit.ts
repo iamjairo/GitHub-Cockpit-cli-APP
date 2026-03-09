@@ -176,6 +176,7 @@ export const useCockpitStore = defineStore("cockpit", () => {
     cliExecutablePath: null,
     selectedProjectId: null,
     defaultModelId: null,
+    defaultReasoningLevelId: null,
     hiddenProjectIds: []
   });
   const gitStatus = ref<GitStatus>(emptyGitStatus());
@@ -302,7 +303,6 @@ export const useCockpitStore = defineStore("cockpit", () => {
       ...settings.value,
       selectedProjectId: projectId
     };
-    await refreshProjects();
     await refreshGit();
   }
 
@@ -584,7 +584,11 @@ export const useCockpitStore = defineStore("cockpit", () => {
     }
   }
 
-  async function createThread(projectId = selectedProjectId.value, modelId?: string): Promise<void> {
+  async function createThread(
+    projectId = selectedProjectId.value,
+    modelId?: string,
+    reasoningLevelId?: string
+  ): Promise<void> {
     errorMessage.value = null;
     try {
       if (!projectId) {
@@ -602,7 +606,11 @@ export const useCockpitStore = defineStore("cockpit", () => {
         await selectProjectContext(projectId);
       }
 
-      const thread = await cockpitApi().threads.create(projectId, modelId?.trim() || undefined);
+      const thread = await cockpitApi().threads.create(
+        projectId,
+        modelId?.trim() || undefined,
+        reasoningLevelId?.trim() || undefined
+      );
       upsertThread(thread);
       await openThread(thread.id);
     } catch (error) {
@@ -682,7 +690,11 @@ export const useCockpitStore = defineStore("cockpit", () => {
         return;
       }
 
-      await createThread(selectedProjectId.value, settings.value.defaultModelId ?? undefined);
+      await createThread(
+        selectedProjectId.value,
+        settings.value.defaultModelId ?? undefined,
+        settings.value.defaultReasoningLevelId ?? undefined
+      );
     }
 
     if (!activeThreadId.value) {
@@ -741,7 +753,7 @@ export const useCockpitStore = defineStore("cockpit", () => {
         return;
       }
 
-      await createThread(selectedProjectId.value, modelId);
+      await createThread(selectedProjectId.value, modelId, settings.value.defaultReasoningLevelId ?? undefined);
     }
 
     if (!activeThreadId.value) {
@@ -755,7 +767,35 @@ export const useCockpitStore = defineStore("cockpit", () => {
 
     const updated = await cockpitApi().threads.updateModel(activeThreadId.value, modelId);
     upsertThread(updated);
-    models.value = await cockpitApi().chat.getModels(activeThreadId.value);
+    models.value = await cockpitApi().chat.refreshModels(activeThreadId.value);
+  }
+
+  async function updateThreadReasoning(reasoningLevelId: string): Promise<void> {
+    settings.value = {
+      ...settings.value,
+      defaultReasoningLevelId: reasoningLevelId
+    };
+
+    if (!activeThreadId.value) {
+      if (!selectedProjectId.value) {
+        return;
+      }
+
+      await createThread(selectedProjectId.value, settings.value.defaultModelId ?? undefined, reasoningLevelId);
+    }
+
+    if (!activeThreadId.value) {
+      return;
+    }
+
+    if (activeThread.value?.reasoningLevelId === reasoningLevelId) {
+      models.value = await cockpitApi().chat.getModels(activeThreadId.value);
+      return;
+    }
+
+    const updated = await cockpitApi().threads.updateReasoning(activeThreadId.value, reasoningLevelId);
+    upsertThread(updated);
+    models.value = await cockpitApi().chat.refreshModels(activeThreadId.value);
   }
 
   async function refreshModels(): Promise<void> {
@@ -780,13 +820,31 @@ export const useCockpitStore = defineStore("cockpit", () => {
       return;
     }
 
-    const result = await cockpitApi().git.commitAndPush({
-      rootPath: selectedProject.value.rootPath,
-      message
-    });
+    const trimmedMessage = message.trim();
 
-    commitOutput.value = [result.stdout, result.stderr].filter(Boolean).join("\n");
-    await refreshGit();
+    errorMessage.value = null;
+    commitOutput.value = null;
+
+    if (!trimmedMessage) {
+      errorMessage.value = "Commit message is required.";
+      return;
+    }
+
+    busy.value = true;
+    try {
+      const result = await cockpitApi().git.commitAndPush({
+        rootPath: selectedProject.value.rootPath,
+        message: trimmedMessage
+      });
+
+      commitOutput.value = [result.stdout, result.stderr].filter(Boolean).join("\n");
+      await refreshGit();
+      commitDialogOpen.value = false;
+    } catch (error) {
+      errorMessage.value = toErrorMessage(error, "Failed to commit and push.");
+    } finally {
+      busy.value = false;
+    }
   }
 
   return {
@@ -825,6 +883,7 @@ export const useCockpitStore = defineStore("cockpit", () => {
     retryRun,
     resolvePermission,
     updateThreadModel,
+    updateThreadReasoning,
     refreshModels,
     refreshCliHealth,
     refreshGit,

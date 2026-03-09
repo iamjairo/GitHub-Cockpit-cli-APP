@@ -30,6 +30,7 @@ function makeThread(
     title: `Thread ${id}`,
     summary,
     modelId: "gpt-5",
+    reasoningLevelId: "",
     createdAt,
     updatedAt: createdAt,
     lastMessageAt,
@@ -71,8 +72,12 @@ function createMemoryStorage(): Storage {
   };
 }
 
-function installCockpitApi(overrides: Partial<typeof window.cockpit> = {}): void {
-  const cockpit = {
+type CockpitOverrides = {
+  [K in keyof typeof window.cockpit]?: Partial<(typeof window.cockpit)[K]>;
+};
+
+function installCockpitApi(overrides: CockpitOverrides = {}): void {
+  const cockpit: typeof window.cockpit = {
     system: {
       getCliHealth: vi.fn().mockResolvedValue({
         installed: true,
@@ -96,7 +101,8 @@ function installCockpitApi(overrides: Partial<typeof window.cockpit> = {}): void
       rename: vi.fn(),
       delete: vi.fn().mockResolvedValue(undefined),
       open: vi.fn(),
-      updateModel: vi.fn()
+      updateModel: vi.fn(),
+      updateReasoning: vi.fn()
     },
     chat: {
       send: vi.fn().mockResolvedValue(undefined),
@@ -135,11 +141,36 @@ function installCockpitApi(overrides: Partial<typeof window.cockpit> = {}): void
         cliExecutablePath: null,
         selectedProjectId: null,
         defaultModelId: null,
+        defaultReasoningLevelId: null,
         hiddenProjectIds: []
       }),
       update: vi.fn()
-    },
-    ...overrides
+    }
+  };
+
+  cockpit.system = {
+    ...cockpit.system,
+    ...overrides.system
+  };
+  cockpit.projects = {
+    ...cockpit.projects,
+    ...overrides.projects
+  };
+  cockpit.threads = {
+    ...cockpit.threads,
+    ...overrides.threads
+  };
+  cockpit.chat = {
+    ...cockpit.chat,
+    ...overrides.chat
+  };
+  cockpit.git = {
+    ...cockpit.git,
+    ...overrides.git
+  };
+  cockpit.settings = {
+    ...cockpit.settings,
+    ...overrides.settings
   };
 
   Object.defineProperty(window, "cockpit", {
@@ -157,6 +188,12 @@ const pButtonStub = {
 const pDialogStub = {
   props: ["visible"],
   template: "<div v-if=\"visible\"><slot /></div>"
+};
+
+const tooltipDirectiveStub = {
+  mounted() {},
+  updated() {},
+  unmounted() {}
 };
 
 describe("sidebar grouping", () => {
@@ -221,6 +258,9 @@ describe("sidebar grouping", () => {
     const wrapper = mount(App, {
       global: {
         plugins: [createPinia()],
+        directives: {
+          tooltip: tooltipDirectiveStub
+        },
         stubs: {
           PButton: pButtonStub,
           PDialog: pDialogStub,
@@ -251,8 +291,163 @@ describe("sidebar grouping", () => {
     expect(text).not.toContain("user: Describe this project.");
     expect(text).not.toContain("assistant: Here is the summary.");
     expect(buttonLabels).not.toContain("New thread");
-    expect(buttonLabels).toContain("Add project");
+    expect(wrapper.find('button[aria-label="Add project"]').exists()).toBe(true);
     expect(buttonLabels).toContain("Settings");
+
+    const sidebar = wrapper.find("aside");
+    expect(sidebar.classes()).toContain("app-sidebar");
+    expect(sidebar.classes()).not.toContain("hidden");
+
+    const header = wrapper.find("header");
+    expect(header.classes()).toContain("main-header");
+
+    const firstProjectGroup = wrapper.find(".project-group");
+    const firstProjectPill = firstProjectGroup.find(".project-pill");
+    const projectHeaderButtons = firstProjectGroup.find(".project-pill-header").findAll("button");
+    const projectActionButtons = firstProjectGroup.find(".project-group-actions").findAll("button");
+
+    expect(firstProjectPill.find(".project-pill-body").exists()).toBe(true);
+    expect(firstProjectPill.find(".project-thread-list").exists()).toBe(true);
+    expect(firstProjectPill.findAll(".thread-row")).toHaveLength(1);
+    expect(projectHeaderButtons).toHaveLength(2);
+    expect(projectHeaderButtons[0]?.attributes("aria-label")).toBe("Hide threads");
+    expect(projectHeaderButtons[1]?.text()).toContain(projectA.name);
+    expect(projectActionButtons).toHaveLength(2);
+    expect(projectActionButtons[0]?.attributes("aria-label")).toBe("New thread");
+    expect(projectActionButtons[1]?.attributes("aria-label")).toBe(`Remove project ${projectA.name}`);
+
+    await projectHeaderButtons[0]!.trigger("click");
+    await flushPromises();
+
+    expect(firstProjectGroup.find(".project-group-actions").exists()).toBe(false);
+    expect(firstProjectGroup.find('button[aria-label="New thread"]').exists()).toBe(false);
+    expect(firstProjectGroup.find(`button[aria-label="Remove project ${projectA.name}"]`).exists()).toBe(false);
+  });
+
+  it("does not open a thread when clicking its delete button", async () => {
+    const project = makeProject("project-a", "alpha");
+    const thread = makeThread("thread-a", project.id, "2026-03-08T10:02:00.000Z", "2026-03-08T10:07:00.000Z");
+    const openThread = vi.fn().mockResolvedValue(openPayload(thread));
+
+    installCockpitApi({
+      projects: {
+        list: vi.fn().mockResolvedValue([project]),
+        create: vi.fn(),
+        remove: vi.fn().mockResolvedValue(undefined),
+        select: vi.fn().mockResolvedValue(project)
+      },
+      threads: {
+        list: vi.fn().mockResolvedValue([thread]),
+        create: vi.fn(),
+        rename: vi.fn(),
+        delete: vi.fn().mockResolvedValue(undefined),
+        open: openThread,
+        updateModel: vi.fn()
+      },
+      settings: {
+        get: vi.fn().mockResolvedValue({
+          cliExecutablePath: null,
+          selectedProjectId: project.id,
+          defaultModelId: null,
+          hiddenProjectIds: []
+        }),
+        update: vi.fn()
+      }
+    });
+
+    const wrapper = mount(App, {
+      global: {
+        plugins: [createPinia()],
+        directives: {
+          tooltip: tooltipDirectiveStub
+        },
+        stubs: {
+          PButton: pButtonStub,
+          PDialog: pDialogStub,
+          PDrawer: { template: "<div><slot /></div>" },
+          PInputText: { template: "<input />" },
+          PMessage: { template: "<div><slot /></div>" },
+          PSelect: { template: "<div />" },
+          PTag: { template: "<span><slot /></span>" },
+          PTextarea: { template: "<textarea />" }
+        }
+      }
+    });
+
+    await flushPromises();
+
+    expect(openThread).toHaveBeenCalledTimes(1);
+
+    await wrapper.find('button[aria-label="Delete thread"]').trigger("click");
+    await flushPromises();
+
+    expect(openThread).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("This cannot be undone.");
+  });
+
+  it("marks only the active thread delete button as visible by default", async () => {
+    const project = makeProject("project-a", "alpha");
+    const activeThread = makeThread("thread-a", project.id, "2026-03-08T10:02:00.000Z", "2026-03-08T10:07:00.000Z");
+    const inactiveThread = makeThread("thread-b", project.id, "2026-03-08T10:03:00.000Z", "2026-03-08T10:08:00.000Z");
+
+    installCockpitApi({
+      projects: {
+        list: vi.fn().mockResolvedValue([project]),
+        create: vi.fn(),
+        remove: vi.fn().mockResolvedValue(undefined),
+        select: vi.fn().mockResolvedValue(project)
+      },
+      threads: {
+        list: vi.fn().mockResolvedValue([inactiveThread, activeThread]),
+        create: vi.fn(),
+        rename: vi.fn(),
+        delete: vi.fn().mockResolvedValue(undefined),
+        open: vi.fn().mockResolvedValue(openPayload(activeThread)),
+        updateModel: vi.fn()
+      },
+      settings: {
+        get: vi.fn().mockResolvedValue({
+          cliExecutablePath: null,
+          selectedProjectId: project.id,
+          defaultModelId: null,
+          hiddenProjectIds: []
+        }),
+        update: vi.fn()
+      }
+    });
+
+    const wrapper = mount(App, {
+      global: {
+        plugins: [createPinia()],
+        directives: {
+          tooltip: tooltipDirectiveStub
+        },
+        stubs: {
+          PButton: pButtonStub,
+          PDialog: pDialogStub,
+          PDrawer: { template: "<div><slot /></div>" },
+          PInputText: { template: "<input />" },
+          PMessage: { template: "<div><slot /></div>" },
+          PSelect: { template: "<div />" },
+          PTag: { template: "<span><slot /></span>" },
+          PTextarea: { template: "<textarea />" }
+        }
+      }
+    });
+
+    await flushPromises();
+
+    const threadRows = wrapper.findAll(".thread-row");
+
+    expect(threadRows).toHaveLength(2);
+    expect(threadRows[0]?.classes()).toContain("thread-row-active");
+    expect(threadRows[0]?.find('button[aria-label="Delete thread"]').classes()).toContain(
+      "thread-delete-button-visible"
+    );
+    expect(threadRows[1]?.classes()).not.toContain("thread-row-active");
+    expect(threadRows[1]?.find('button[aria-label="Delete thread"]').classes()).not.toContain(
+      "thread-delete-button-visible"
+    );
   });
 
   it("renders reasoning, tool calls, and the visible response in one transcript", async () => {
@@ -343,6 +538,9 @@ describe("sidebar grouping", () => {
     const wrapper = mount(App, {
       global: {
         plugins: [createPinia()],
+        directives: {
+          tooltip: tooltipDirectiveStub
+        },
         stubs: {
           PButton: pButtonStub,
           PDialog: pDialogStub,
@@ -477,6 +675,9 @@ describe("sidebar grouping", () => {
     const wrapper = mount(App, {
       global: {
         plugins: [createPinia()],
+        directives: {
+          tooltip: tooltipDirectiveStub
+        },
         stubs: {
           PButton: pButtonStub,
           PDialog: pDialogStub,

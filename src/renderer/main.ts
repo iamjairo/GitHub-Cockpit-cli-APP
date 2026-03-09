@@ -1,6 +1,7 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
 import PrimeVue from "primevue/config";
+import Tooltip from "primevue/tooltip";
 import Aura from "@primeuix/themes/aura";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
@@ -26,6 +27,7 @@ app.use(PrimeVue, {
     }
   }
 });
+app.directive("tooltip", Tooltip);
 
 app.component("PButton", Button);
 app.component("PDialog", Dialog);

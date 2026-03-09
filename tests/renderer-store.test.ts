@@ -26,6 +26,7 @@ function makeThread(
     title: `Thread ${id}`,
     summary: "",
     modelId: "gpt-5",
+    reasoningLevelId: "",
     createdAt,
     updatedAt: createdAt,
     lastMessageAt,
@@ -42,8 +43,12 @@ function openPayload(thread: ThreadRecord): ThreadOpenPayload {
   };
 }
 
-function installCockpitApi(overrides: Partial<typeof window.cockpit> = {}): void {
-  const cockpit = {
+type CockpitOverrides = {
+  [K in keyof typeof window.cockpit]?: Partial<(typeof window.cockpit)[K]>;
+};
+
+function installCockpitApi(overrides: CockpitOverrides = {}): void {
+  const cockpit: typeof window.cockpit = {
     system: {
       getCliHealth: vi.fn().mockResolvedValue({
         installed: true,
@@ -67,7 +72,8 @@ function installCockpitApi(overrides: Partial<typeof window.cockpit> = {}): void
       rename: vi.fn(),
       delete: vi.fn().mockResolvedValue(undefined),
       open: vi.fn(),
-      updateModel: vi.fn()
+      updateModel: vi.fn(),
+      updateReasoning: vi.fn()
     },
     chat: {
       send: vi.fn().mockResolvedValue(undefined),
@@ -106,11 +112,36 @@ function installCockpitApi(overrides: Partial<typeof window.cockpit> = {}): void
         cliExecutablePath: null,
         selectedProjectId: null,
         defaultModelId: null,
+        defaultReasoningLevelId: null,
         hiddenProjectIds: []
       }),
       update: vi.fn()
-    },
-    ...overrides
+    }
+  };
+
+  cockpit.system = {
+    ...cockpit.system,
+    ...overrides.system
+  };
+  cockpit.projects = {
+    ...cockpit.projects,
+    ...overrides.projects
+  };
+  cockpit.threads = {
+    ...cockpit.threads,
+    ...overrides.threads
+  };
+  cockpit.chat = {
+    ...cockpit.chat,
+    ...overrides.chat
+  };
+  cockpit.git = {
+    ...cockpit.git,
+    ...overrides.git
+  };
+  cockpit.settings = {
+    ...cockpit.settings,
+    ...overrides.settings
   };
 
   Object.defineProperty(globalThis, "window", {
@@ -168,7 +199,7 @@ describe("cockpit renderer store", () => {
 
     expect(window.cockpit.system.pickProjectDirectory).toHaveBeenCalledTimes(1);
     expect(window.cockpit.projects.create).toHaveBeenCalledWith(project.rootPath);
-    expect(window.cockpit.threads.create).toHaveBeenCalledWith(project.id, undefined);
+    expect(window.cockpit.threads.create).toHaveBeenCalledWith(project.id, undefined, undefined);
     expect(store.selectedProjectId).toBe(project.id);
     expect(store.activeThreadId).toBe(thread.id);
     expect(store.errorMessage).toBeNull();
@@ -304,6 +335,70 @@ describe("cockpit renderer store", () => {
     expect(store.activeThreadId).toBe(threadB.id);
   });
 
+  it("keeps project card order stable when selecting another project", async () => {
+    const projectA = makeProject("project-a", "alpha");
+    const projectB = makeProject("project-b", "beta");
+    const threadA = makeThread("thread-a", projectA.id, "2026-03-08T10:02:00.000Z", "2026-03-08T10:07:00.000Z");
+    const threadB = makeThread("thread-b", projectB.id, "2026-03-08T10:03:00.000Z", "2026-03-08T10:08:00.000Z");
+    const listProjects = vi.fn()
+      .mockResolvedValueOnce([projectA, projectB])
+      .mockResolvedValueOnce([projectB, projectA]);
+
+    installCockpitApi({
+      projects: {
+        list: listProjects,
+        create: vi.fn(),
+        remove: vi.fn().mockResolvedValue(undefined),
+        select: vi.fn().mockResolvedValue(projectB)
+      },
+      threads: {
+        list: vi.fn().mockResolvedValue([threadB, threadA]),
+        create: vi.fn(),
+        rename: vi.fn(),
+        delete: vi.fn().mockResolvedValue(undefined),
+        open: vi.fn()
+          .mockResolvedValueOnce(openPayload(threadA))
+          .mockResolvedValueOnce(openPayload(threadB)),
+        updateModel: vi.fn()
+      },
+      git: {
+        getStatus: vi.fn().mockResolvedValue({
+          branch: "main",
+          upstream: "origin/main",
+          ahead: 0,
+          behind: 0,
+          changedCount: 0,
+          untrackedCount: 0,
+          isClean: true
+        }),
+        listChangedFiles: vi.fn().mockResolvedValue([]),
+        commitAndPush: vi.fn()
+      },
+      settings: {
+        get: vi.fn().mockResolvedValue({
+          cliExecutablePath: null,
+          selectedProjectId: projectA.id,
+          defaultModelId: null,
+          hiddenProjectIds: []
+        }),
+        update: vi.fn()
+      }
+    });
+
+    const store = useCockpitStore();
+
+    await store.bootstrap();
+    expect(store.projectThreadGroups.map((group) => group.project.id)).toEqual([projectA.id, projectB.id]);
+
+    await store.selectProject(projectB.id);
+
+    expect(window.cockpit.projects.select).toHaveBeenLastCalledWith(projectB.id);
+    expect(store.projectThreadGroups.map((group) => group.project.id)).toEqual([projectA.id, projectB.id]);
+    expect(store.selectedProjectId).toBe(projectB.id);
+    expect(store.activeThreadId).toBe(threadB.id);
+    expect(listProjects).toHaveBeenCalledTimes(1);
+  });
+
   it("creates a thread inside the requested project group", async () => {
     const projectA = makeProject("project-a", "alpha");
     const projectB = makeProject("project-b", "beta");
@@ -343,7 +438,7 @@ describe("cockpit renderer store", () => {
     await store.bootstrap();
     await store.createThread(projectB.id);
 
-    expect(window.cockpit.threads.create).toHaveBeenCalledWith(projectB.id, undefined);
+    expect(window.cockpit.threads.create).toHaveBeenCalledWith(projectB.id, undefined, undefined);
     expect(window.cockpit.projects.select).toHaveBeenLastCalledWith(projectB.id);
     expect(store.selectedProjectId).toBe(projectB.id);
     expect(store.activeThreadId).toBe(newThreadB.id);
@@ -592,7 +687,7 @@ describe("cockpit renderer store", () => {
     await store.bootstrap();
     await store.updateThreadModel("gpt-5.4");
 
-    expect(window.cockpit.threads.create).toHaveBeenCalledWith(project.id, "gpt-5.4");
+    expect(window.cockpit.threads.create).toHaveBeenCalledWith(project.id, "gpt-5.4", undefined);
     expect(window.cockpit.threads.updateModel).not.toHaveBeenCalled();
     expect(store.activeThreadId).toBe(createdThread.id);
     expect(store.activeThread?.modelId).toBe("gpt-5.4");
@@ -634,12 +729,88 @@ describe("cockpit renderer store", () => {
     await store.bootstrap();
     await store.sendPrompt("Write a changelog");
 
-    expect(window.cockpit.threads.create).toHaveBeenCalledWith(project.id, undefined);
+    expect(window.cockpit.threads.create).toHaveBeenCalledWith(project.id, undefined, undefined);
     expect(window.cockpit.chat.send).toHaveBeenCalledWith({
       threadId: createdThread.id,
       content: "Write a changelog"
     });
     expect(store.activeThreadId).toBe(createdThread.id);
+  });
+
+  it("updates the active thread reasoning level and refreshes discovery", async () => {
+    const project = makeProject("project-a", "alpha");
+    const thread = makeThread("thread-a", project.id, "2026-03-08T10:00:00.000Z");
+    const updatedThread = {
+      ...thread,
+      reasoningLevelId: "high"
+    };
+
+    installCockpitApi({
+      projects: {
+        list: vi.fn().mockResolvedValue([project]),
+        create: vi.fn(),
+        remove: vi.fn().mockResolvedValue(undefined),
+        select: vi.fn().mockResolvedValue(project)
+      },
+      threads: {
+        list: vi.fn().mockResolvedValue([thread]),
+        create: vi.fn(),
+        rename: vi.fn(),
+        delete: vi.fn().mockResolvedValue(undefined),
+        open: vi.fn().mockResolvedValue(openPayload(thread)),
+        updateModel: vi.fn(),
+        updateReasoning: vi.fn().mockResolvedValue(updatedThread)
+      },
+      chat: {
+        send: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        retry: vi.fn().mockResolvedValue(undefined),
+        resolvePermission: vi.fn().mockResolvedValue(undefined),
+        subscribe: vi.fn().mockReturnValue(() => undefined),
+        getModels: vi.fn().mockResolvedValue({
+          models: [{ modelId: "gpt-5", name: "GPT-5" }],
+          currentModelId: "gpt-5",
+          reasoningLevels: [
+            { value: "low", name: "Low" },
+            { value: "high", name: "High" }
+          ],
+          currentReasoningLevelId: "low",
+          discoveredAt: "2026-03-08T00:00:00.000Z",
+          source: "session"
+        }),
+        refreshModels: vi.fn().mockResolvedValue({
+          models: [{ modelId: "gpt-5", name: "GPT-5" }],
+          currentModelId: "gpt-5",
+          reasoningLevels: [
+            { value: "low", name: "Low" },
+            { value: "high", name: "High" }
+          ],
+          currentReasoningLevelId: "high",
+          discoveredAt: "2026-03-08T00:00:00.000Z",
+          source: "session"
+        })
+      },
+      settings: {
+        get: vi.fn().mockResolvedValue({
+          cliExecutablePath: null,
+          selectedProjectId: project.id,
+          defaultModelId: null,
+          defaultReasoningLevelId: null,
+          hiddenProjectIds: []
+        }),
+        update: vi.fn()
+      }
+    });
+
+    const store = useCockpitStore();
+
+    await store.bootstrap();
+    await store.updateThreadReasoning("high");
+
+    expect(window.cockpit.threads.updateReasoning).toHaveBeenCalledWith(thread.id, "high");
+    expect(store.activeThread?.reasoningLevelId).toBe("high");
+    expect(store.settings.defaultReasoningLevelId).toBe("high");
+    expect(window.cockpit.chat.refreshModels).toHaveBeenCalledWith(thread.id);
   });
 
   it("builds a single transcript timeline with tool calls in first-seen order", async () => {
@@ -986,5 +1157,130 @@ describe("cockpit renderer store", () => {
       "tool-call:tool-1",
       "message:assistant-1"
     ]);
+  });
+
+  it("requires a non-whitespace commit message before committing", async () => {
+    const project = makeProject("project-1", "repo");
+    const thread = makeThread("thread-1", project.id, "2026-03-08T10:01:00.000Z");
+    const commitAndPush = vi.fn();
+
+    installCockpitApi({
+      projects: {
+        list: vi.fn().mockResolvedValue([project]),
+        create: vi.fn(),
+        remove: vi.fn().mockResolvedValue(undefined),
+        select: vi.fn().mockResolvedValue(project)
+      },
+      threads: {
+        list: vi.fn().mockResolvedValue([thread]),
+        create: vi.fn(),
+        rename: vi.fn(),
+        delete: vi.fn().mockResolvedValue(undefined),
+        open: vi.fn().mockResolvedValue(openPayload(thread)),
+        updateModel: vi.fn()
+      },
+      git: {
+        getStatus: vi.fn().mockResolvedValue({
+          branch: "main",
+          upstream: "origin/main",
+          ahead: 0,
+          behind: 0,
+          changedCount: 1,
+          untrackedCount: 0,
+          isClean: false
+        }),
+        listChangedFiles: vi.fn().mockResolvedValue([]),
+        commitAndPush
+      },
+      settings: {
+        get: vi.fn().mockResolvedValue({
+          cliExecutablePath: null,
+          selectedProjectId: project.id,
+          defaultModelId: null,
+          hiddenProjectIds: []
+        }),
+        update: vi.fn()
+      }
+    });
+
+    const store = useCockpitStore();
+
+    await store.bootstrap();
+    store.commitDialogOpen = true;
+    store.commitOutput = "stale output";
+
+    await store.runCommitAndPush("   ");
+
+    expect(commitAndPush).not.toHaveBeenCalled();
+    expect(store.errorMessage).toBe("Commit message is required.");
+    expect(store.commitDialogOpen).toBe(true);
+    expect(store.commitOutput).toBeNull();
+  });
+
+  it("closes the commit dialog after a successful commit and push", async () => {
+    const project = makeProject("project-1", "repo");
+    const thread = makeThread("thread-1", project.id, "2026-03-08T10:01:00.000Z");
+    const getStatus = vi.fn().mockResolvedValue({
+      branch: "main",
+      upstream: "origin/main",
+      ahead: 0,
+      behind: 0,
+      changedCount: 0,
+      untrackedCount: 0,
+      isClean: true
+    });
+    const listChangedFiles = vi.fn().mockResolvedValue([]);
+    const commitAndPush = vi.fn().mockResolvedValue({
+      stdout: "[main abc123] Add guard\n 1 file changed, 1 insertion(+)",
+      stderr: ""
+    });
+
+    installCockpitApi({
+      projects: {
+        list: vi.fn().mockResolvedValue([project]),
+        create: vi.fn(),
+        remove: vi.fn().mockResolvedValue(undefined),
+        select: vi.fn().mockResolvedValue(project)
+      },
+      threads: {
+        list: vi.fn().mockResolvedValue([thread]),
+        create: vi.fn(),
+        rename: vi.fn(),
+        delete: vi.fn().mockResolvedValue(undefined),
+        open: vi.fn().mockResolvedValue(openPayload(thread)),
+        updateModel: vi.fn()
+      },
+      git: {
+        getStatus,
+        listChangedFiles,
+        commitAndPush
+      },
+      settings: {
+        get: vi.fn().mockResolvedValue({
+          cliExecutablePath: null,
+          selectedProjectId: project.id,
+          defaultModelId: null,
+          hiddenProjectIds: []
+        }),
+        update: vi.fn()
+      }
+    });
+
+    const store = useCockpitStore();
+
+    await store.bootstrap();
+    store.commitDialogOpen = true;
+
+    await store.runCommitAndPush("  Add guard  ");
+
+    expect(commitAndPush).toHaveBeenCalledWith({
+      rootPath: project.rootPath,
+      message: "Add guard"
+    });
+    expect(store.errorMessage).toBeNull();
+    expect(store.commitDialogOpen).toBe(false);
+    expect(store.commitOutput).toContain("[main abc123] Add guard");
+    expect(getStatus).toHaveBeenCalledTimes(2);
+    expect(listChangedFiles).toHaveBeenCalledTimes(2);
   });
 });

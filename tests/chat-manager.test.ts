@@ -10,6 +10,7 @@ function makeThread(modelId: string): ThreadRecord {
     title: "Thread",
     summary: "",
     modelId,
+    reasoningLevelId: "",
     createdAt: "2026-03-08T10:00:00.000Z",
     updatedAt: "2026-03-08T10:00:00.000Z",
     lastMessageAt: null,
@@ -49,7 +50,7 @@ describe("chat manager model discovery", () => {
       ]
     } as NewSessionResponse;
 
-    const discovery = modelDiscoveryFromSession(session, null);
+    const discovery = modelDiscoveryFromSession(session, null, null);
 
     expect(discovery?.currentModelId).toBe("claude-sonnet-4.6");
     expect(discovery?.models).toEqual([
@@ -71,6 +72,7 @@ describe("chat manager model discovery", () => {
         cliExecutablePath: null,
         selectedProjectId: null,
         defaultModelId: null,
+        defaultReasoningLevelId: null,
         hiddenProjectIds: []
       })
     };
@@ -84,6 +86,8 @@ describe("chat manager model discovery", () => {
         }
       ],
       currentModelId: "claude-sonnet-4.6",
+      reasoningLevels: [],
+      currentReasoningLevelId: null,
       discoveredAt: "2026-03-08T10:00:00.000Z",
       source: "session"
     };
@@ -102,6 +106,7 @@ describe("chat manager model discovery", () => {
         cliExecutablePath: null,
         selectedProjectId: null,
         defaultModelId: "gpt-5.4",
+        defaultReasoningLevelId: null,
         hiddenProjectIds: []
       })
     };
@@ -115,6 +120,8 @@ describe("chat manager model discovery", () => {
         }
       ],
       currentModelId: "claude-sonnet-4.6",
+      reasoningLevels: [],
+      currentReasoningLevelId: null,
       discoveredAt: "2026-03-08T10:00:00.000Z",
       source: "session"
     };

@@ -16,12 +16,15 @@ const api: CockpitApi = {
   },
   threads: {
     list: (projectId) => ipcRenderer.invoke(IPC_CHANNELS.threadsList, projectId),
-    create: (projectId, modelId) => ipcRenderer.invoke(IPC_CHANNELS.threadsCreate, projectId, modelId),
+    create: (projectId, modelId, reasoningLevelId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.threadsCreate, projectId, modelId, reasoningLevelId),
     rename: (threadId, title) => ipcRenderer.invoke(IPC_CHANNELS.threadsRename, threadId, title),
     delete: (threadId) => ipcRenderer.invoke(IPC_CHANNELS.threadsDelete, threadId),
     open: (threadId) => ipcRenderer.invoke(IPC_CHANNELS.threadsOpen, threadId),
     updateModel: (threadId, modelId) =>
-      ipcRenderer.invoke(IPC_CHANNELS.threadsUpdateModel, threadId, modelId)
+      ipcRenderer.invoke(IPC_CHANNELS.threadsUpdateModel, threadId, modelId),
+    updateReasoning: (threadId, reasoningLevelId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.threadsUpdateReasoning, threadId, reasoningLevelId)
   },
   chat: {
     send: (input) => ipcRenderer.invoke(IPC_CHANNELS.chatSend, input),

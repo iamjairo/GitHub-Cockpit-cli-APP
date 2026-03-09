@@ -21,6 +21,7 @@ function defaultSettings(): SettingsRecord {
     cliExecutablePath: null,
     selectedProjectId: null,
     defaultModelId: null,
+    defaultReasoningLevelId: null,
     hiddenProjectIds: []
   };
 }
@@ -30,12 +31,18 @@ function normalizeSettings(settings: Partial<SettingsRecord> | null | undefined)
     ...defaultSettings(),
     ...settings,
     defaultModelId: typeof settings?.defaultModelId === "string" ? settings.defaultModelId : null,
+    defaultReasoningLevelId:
+      typeof settings?.defaultReasoningLevelId === "string" ? settings.defaultReasoningLevelId : null,
     hiddenProjectIds: Array.isArray(settings?.hiddenProjectIds) ? settings.hiddenProjectIds : []
   };
 }
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function sortProjects(projects: ProjectRecord[]): ProjectRecord[] {
+  return [...projects].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 async function readJson<T>(file: JsonFile<T>): Promise<T> {
@@ -64,19 +71,32 @@ function createProjectRecord(rootPath: string): ProjectRecord {
   };
 }
 
-function createThreadRecord(projectId: string, modelId: string): ThreadRecord {
-  const timestamp = nowIso();
+function normalizeThread(thread: Partial<ThreadRecord>): ThreadRecord {
   return {
+    id: thread.id ?? crypto.randomUUID(),
+    projectId: thread.projectId ?? "",
+    title: typeof thread.title === "string" ? thread.title : "New thread",
+    summary: typeof thread.summary === "string" ? thread.summary : "",
+    modelId: typeof thread.modelId === "string" ? thread.modelId : "",
+    reasoningLevelId: typeof thread.reasoningLevelId === "string" ? thread.reasoningLevelId : "",
+    createdAt: typeof thread.createdAt === "string" ? thread.createdAt : nowIso(),
+    updatedAt: typeof thread.updatedAt === "string" ? thread.updatedAt : nowIso(),
+    lastMessageAt: typeof thread.lastMessageAt === "string" ? thread.lastMessageAt : null,
+    status: thread.status === "running" || thread.status === "error" ? thread.status : "idle"
+  };
+}
+
+function createThreadRecord(projectId: string, modelId: string, reasoningLevelId: string): ThreadRecord {
+  const timestamp = nowIso();
+  return normalizeThread({
     id: crypto.randomUUID(),
     projectId,
-    title: "New thread",
-    summary: "",
     modelId,
+    reasoningLevelId,
     createdAt: timestamp,
     updatedAt: timestamp,
-    lastMessageAt: null,
-    status: "idle"
-  };
+    lastMessageAt: null
+  });
 }
 
 export class AppStore {
@@ -135,7 +155,7 @@ export class AppStore {
 
     const threads = await this.getThreads();
     const sanitizedThreads = threads.map((thread) => ({
-      ...thread,
+      ...normalizeThread(thread),
       status: thread.status === "running" ? "idle" : thread.status
     }));
     await writeJson(this.threadsFile, sanitizedThreads);
@@ -151,8 +171,7 @@ export class AppStore {
   }
 
   async getProjects(): Promise<ProjectRecord[]> {
-    const projects = await readJson(this.projectsFile);
-    return projects.sort((a, b) => b.lastOpenedAt.localeCompare(a.lastOpenedAt));
+    return sortProjects(await readJson(this.projectsFile));
   }
 
   async createProject(rootPath: string): Promise<ProjectRecord> {
@@ -206,23 +225,12 @@ export class AppStore {
     if (!project) {
       return null;
     }
-
-    const updatedProject = {
-      ...project,
-      lastOpenedAt: nowIso(),
-      updatedAt: nowIso()
-    };
-
-    await writeJson(
-      this.projectsFile,
-      projects.map((entry) => (entry.id === projectId ? updatedProject : entry))
-    );
     await this.updateSettings({ selectedProjectId: projectId });
-    return updatedProject;
+    return project;
   }
 
   async getThreads(projectId?: string): Promise<ThreadRecord[]> {
-    const threads = await readJson(this.threadsFile);
+    const threads = (await readJson(this.threadsFile)).map((thread) => normalizeThread(thread));
     return threads
       .filter((thread) => (projectId ? thread.projectId === projectId : true))
       .sort((a, b) => {
@@ -233,14 +241,18 @@ export class AppStore {
   }
 
   async getThread(threadId: string): Promise<ThreadRecord | null> {
-    const threads = await readJson(this.threadsFile);
+    const threads = (await readJson(this.threadsFile)).map((thread) => normalizeThread(thread));
     return threads.find((thread) => thread.id === threadId) ?? null;
   }
 
-  async createThread(projectId: string, modelId?: string): Promise<ThreadRecord> {
+  async createThread(projectId: string, modelId?: string, reasoningLevelId?: string): Promise<ThreadRecord> {
     const threads = await readJson(this.threadsFile);
     const settings = await this.getSettings();
-    const thread = createThreadRecord(projectId, modelId?.trim() || settings.defaultModelId || "");
+    const thread = createThreadRecord(
+      projectId,
+      modelId?.trim() || settings.defaultModelId || "",
+      reasoningLevelId?.trim() || settings.defaultReasoningLevelId || ""
+    );
     threads.push(thread);
     await writeJson(this.threadsFile, threads);
     return thread;

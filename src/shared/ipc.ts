@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   threadsDelete: "threads:delete",
   threadsOpen: "threads:open",
   threadsUpdateModel: "threads:updateModel",
+  threadsUpdateReasoning: "threads:updateReasoning",
   chatSend: "chat:send",
   chatStop: "chat:stop",
   chatRetry: "chat:retry",

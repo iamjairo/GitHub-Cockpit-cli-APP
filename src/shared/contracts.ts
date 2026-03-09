@@ -19,6 +19,7 @@ export interface ThreadRecord {
   title: string;
   summary: string;
   modelId: string;
+  reasoningLevelId?: string;
   createdAt: string;
   updatedAt: string;
   lastMessageAt: string | null;
@@ -86,9 +87,17 @@ export interface ModelRecord {
   name: string;
 }
 
+export interface ReasoningLevelRecord {
+  value: string;
+  name: string;
+  description?: string | null;
+}
+
 export interface ModelDiscoveryResult {
   models: ModelRecord[];
   currentModelId: string | null;
+  reasoningLevels?: ReasoningLevelRecord[];
+  currentReasoningLevelId?: string | null;
   discoveredAt: string;
   source: "prompt" | "session" | "cache" | "fallback";
   error?: string;
@@ -98,6 +107,7 @@ export interface SettingsRecord {
   cliExecutablePath: string | null;
   selectedProjectId: string | null;
   defaultModelId: string | null;
+  defaultReasoningLevelId?: string | null;
   hiddenProjectIds: string[];
 }
 
@@ -216,11 +226,12 @@ export interface CockpitApi {
   };
   threads: {
     list: (projectId?: string) => Promise<ThreadRecord[]>;
-    create: (projectId: string, modelId?: string) => Promise<ThreadRecord>;
+    create: (projectId: string, modelId?: string, reasoningLevelId?: string) => Promise<ThreadRecord>;
     rename: (threadId: string, title: string) => Promise<ThreadRecord>;
     delete: (threadId: string) => Promise<void>;
     open: (threadId: string) => Promise<ThreadOpenPayload>;
     updateModel: (threadId: string, modelId: string) => Promise<ThreadRecord>;
+    updateReasoning: (threadId: string, reasoningLevelId: string) => Promise<ThreadRecord>;
   };
   chat: {
     send: (input: ChatSendInput) => Promise<void>;

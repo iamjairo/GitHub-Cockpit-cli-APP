@@ -43,12 +43,15 @@ export function parseDiscoveredModels(raw: string): ModelRecord[] {
 
 export function buildFallbackDiscovery(
   modelId: string | null,
+  reasoningLevelId: string | null,
   error?: string
 ): ModelDiscoveryResult {
   const models = modelId ? [{ modelId, name: modelId }] : [];
   return {
     models,
     currentModelId: modelId,
+    reasoningLevels: [],
+    currentReasoningLevelId: reasoningLevelId,
     discoveredAt: new Date().toISOString(),
     source: "fallback",
     error

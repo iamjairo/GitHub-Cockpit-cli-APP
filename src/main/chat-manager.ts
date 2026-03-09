@@ -10,6 +10,7 @@ import {
   type NewSessionResponse,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
+  type SessionConfigOption,
   type SessionNotification,
   type SessionUpdate,
   type ToolCall,
@@ -24,6 +25,7 @@ import {
   type MessageRecord,
   type ModelDiscoveryResult,
   type ModelRecord,
+  type ReasoningLevelRecord,
   type PermissionOptionRecord,
   type PermissionRequestRecord,
   type PlanEntryRecord,
@@ -51,6 +53,7 @@ type Runtime = {
   threadId: string;
   projectId: string;
   modelId: string;
+  reasoningLevelId: string;
   child: ChildProcessWithoutNullStreams;
   connection: ClientSideConnection;
   sessionId: string;
@@ -166,62 +169,157 @@ function mergeModels(...groups: ModelRecord[][]): ModelRecord[] {
   return [...merged.values()];
 }
 
-function applyCurrentModel(
-  discovery: ModelDiscoveryResult,
-  currentModelId: string | null
-): ModelDiscoveryResult {
-  if (!currentModelId) {
-    return discovery;
+function mergeReasoningLevels(...groups: ReasoningLevelRecord[][]): ReasoningLevelRecord[] {
+  const merged = new Map<string, ReasoningLevelRecord>();
+
+  for (const group of groups) {
+    for (const level of group) {
+      if (!merged.has(level.value)) {
+        merged.set(level.value, level);
+      }
+    }
+  }
+
+  return [...merged.values()];
+}
+
+function flattenSelectOptions(
+  options: SessionConfigOption["options"] | undefined | null
+): ReasoningLevelRecord[] {
+  if (!options?.length) {
+    return [];
+  }
+
+  return options.flatMap((option) =>
+    "value" in option
+      ? [
+          {
+            value: option.value,
+            name: option.name,
+            description: option.description ?? null
+          }
+        ]
+      : option.options.map((groupOption) => ({
+          value: groupOption.value,
+          name: groupOption.name,
+          description: groupOption.description ?? null
+        }))
+  );
+}
+
+function findSelectConfig(
+  configOptions: SessionConfigOption[] | undefined | null,
+  predicate: (option: SessionConfigOption) => boolean
+): { configId: string; currentValue: string | null; options: ReasoningLevelRecord[] } | null {
+  const option = configOptions?.find((entry) => entry.type === "select" && predicate(entry));
+  if (!option) {
+    return null;
   }
 
   return {
+    configId: option.id,
+    currentValue: typeof option.currentValue === "string" ? option.currentValue : null,
+    options: flattenSelectOptions(option.options)
+  };
+}
+
+function getReasoningConfig(
+  configOptions: SessionConfigOption[] | undefined | null
+): { configId: string; currentValue: string | null; options: ReasoningLevelRecord[] } | null {
+  return findSelectConfig(
+    configOptions,
+    (option) => option.category === "thought_level" || /thought|reason/i.test(option.id)
+  );
+}
+
+function applyCurrentModel(
+  discovery: ModelDiscoveryResult,
+  currentModelId: string | null,
+  currentReasoningLevelId: string | null
+): ModelDiscoveryResult {
+  return {
     ...discovery,
-    currentModelId,
-    models: mergeModels(discovery.models, [{ modelId: currentModelId, name: currentModelId }])
+    currentModelId: currentModelId ?? discovery.currentModelId,
+    currentReasoningLevelId: currentReasoningLevelId ?? discovery.currentReasoningLevelId,
+    models: currentModelId
+      ? mergeModels(discovery.models, [{ modelId: currentModelId, name: currentModelId }])
+      : discovery.models,
+    reasoningLevels:
+      currentReasoningLevelId &&
+      !(discovery.reasoningLevels ?? []).some((level) => level.value === currentReasoningLevelId)
+        ? mergeReasoningLevels(discovery.reasoningLevels ?? [], [
+            {
+              value: currentReasoningLevelId,
+              name: currentReasoningLevelId
+            }
+          ])
+        : (discovery.reasoningLevels ?? [])
+  };
+}
+
+function applyConfigOptionsToDiscovery(
+  discovery: ModelDiscoveryResult,
+  configOptions: SessionConfigOption[] | undefined | null
+): ModelDiscoveryResult {
+  const modelConfig = findSelectConfig(
+    configOptions,
+    (option) => option.category === "model" || option.id === "model"
+  );
+  const reasoningConfig = getReasoningConfig(configOptions);
+
+  return {
+    ...discovery,
+    models: modelConfig
+      ? mergeModels(
+          discovery.models,
+          modelConfig.options.map((option) => ({
+            modelId: option.value,
+            name: option.name
+          }))
+        )
+      : discovery.models,
+    currentModelId: modelConfig?.currentValue ?? discovery.currentModelId,
+    reasoningLevels: reasoningConfig?.options ?? discovery.reasoningLevels,
+    currentReasoningLevelId: reasoningConfig?.currentValue ?? discovery.currentReasoningLevelId
   };
 }
 
 export function modelDiscoveryFromSession(
   session: NewSessionResponse,
-  fallbackModelId: string | null
+  fallbackModelId: string | null,
+  fallbackReasoningLevelId: string | null
 ): ModelDiscoveryResult | null {
   const sessionModels = session.models?.availableModels?.map((model: ModelInfo) => ({
     modelId: model.modelId,
     name: model.name
   })) ?? [];
 
-  const modelConfig = session.configOptions?.find((option) => option.type === "select" && option.id === "model");
-  const configModels =
-    modelConfig?.type === "select"
-      ? modelConfig.options.flatMap((option) =>
-          "value" in option
-            ? [
-                {
-                  modelId: option.value,
-                  name: option.name
-                }
-              ]
-            : option.options.map((groupOption) => ({
-                modelId: groupOption.value,
-                name: groupOption.name
-              }))
-        )
-      : [];
+  const modelConfig = findSelectConfig(
+    session.configOptions,
+    (option) => option.category === "model" || option.id === "model"
+  );
+  const configModels = modelConfig?.options.map((option) => ({
+    modelId: option.value,
+    name: option.name
+  })) ?? [];
+  const reasoningConfig = getReasoningConfig(session.configOptions);
 
   const models = mergeModels(sessionModels, configModels);
   const currentModelId =
     session.models?.currentModelId ??
-    (modelConfig?.type === "select" && typeof modelConfig.currentValue === "string"
-      ? modelConfig.currentValue
-      : fallbackModelId);
+    modelConfig?.currentValue ??
+    fallbackModelId;
+  const currentReasoningLevelId = reasoningConfig?.currentValue ?? fallbackReasoningLevelId;
 
-  if (!models.length && !currentModelId) {
+  if (!models.length && !currentModelId && !reasoningConfig?.options.length && !currentReasoningLevelId) {
     return null;
   }
 
   return {
     models,
     currentModelId,
+    reasoningLevels: reasoningConfig?.options ?? [],
+    currentReasoningLevelId,
     discoveredAt: nowIso(),
     source: "session",
     error: !models.length ? "Copilot CLI did not return any models." : undefined
@@ -440,6 +538,8 @@ export class ChatManager {
     const thread = threadId ? await this.store.getThread(threadId) : null;
     const settings = await this.store.getSettings();
     const currentModelId = thread?.modelId?.trim() || settings.defaultModelId?.trim() || null;
+    const currentReasoningLevelId =
+      thread?.reasoningLevelId?.trim() || settings.defaultReasoningLevelId?.trim() || null;
 
     if (this.modelCache) {
       return applyCurrentModel(
@@ -447,12 +547,17 @@ export class ChatManager {
           ...this.modelCache,
           source: "cache"
         },
-        currentModelId ?? this.modelCache.currentModelId
+        currentModelId ?? this.modelCache.currentModelId,
+        currentReasoningLevelId ?? this.modelCache.currentReasoningLevelId ?? null
       );
     }
 
     const discovery = await this.refreshModels(threadId);
-    return applyCurrentModel(discovery, currentModelId ?? discovery.currentModelId);
+    return applyCurrentModel(
+      discovery,
+      currentModelId ?? discovery.currentModelId,
+      currentReasoningLevelId ?? discovery.currentReasoningLevelId ?? null
+    );
   }
 
   async refreshModels(threadId: string | null): Promise<ModelDiscoveryResult> {
@@ -461,9 +566,15 @@ export class ChatManager {
     const settings = await this.store.getSettings();
     const executable = resolveCliExecutable(settings);
     const currentModelId = thread?.modelId?.trim() || settings.defaultModelId?.trim() || null;
+    const currentReasoningLevelId =
+      thread?.reasoningLevelId?.trim() || settings.defaultReasoningLevelId?.trim() || null;
 
     if (!project) {
-      const fallback = buildFallbackDiscovery(currentModelId, "Add a project to discover models.");
+      const fallback = buildFallbackDiscovery(
+        currentModelId,
+        currentReasoningLevelId,
+        "Add a project to discover models."
+      );
       this.modelCache = fallback;
       this.emit({
         type: "models-updated",
@@ -496,9 +607,19 @@ export class ChatManager {
         client
       );
 
-      const sessionDiscovery = modelDiscoveryFromSession(session, currentModelId);
-      if (sessionDiscovery?.models.length) {
-        const discovery = applyCurrentModel(sessionDiscovery, currentModelId ?? sessionDiscovery.currentModelId);
+      const sessionDiscovery = modelDiscoveryFromSession(session, currentModelId, currentReasoningLevelId);
+      const sessionModels = sessionDiscovery?.models ?? [];
+      const sessionModelId = sessionDiscovery?.currentModelId ?? currentModelId;
+      const sessionReasoningLevels = sessionDiscovery?.reasoningLevels ?? [];
+      const sessionReasoningLevelId = sessionDiscovery?.currentReasoningLevelId ?? currentReasoningLevelId;
+      const sessionSource = sessionDiscovery?.source ?? "fallback";
+      const sessionDiscoveredAt = sessionDiscovery?.discoveredAt ?? nowIso();
+      if (sessionDiscovery) {
+        const discovery = applyCurrentModel(
+          sessionDiscovery,
+          currentModelId ?? sessionDiscovery.currentModelId,
+          currentReasoningLevelId ?? sessionDiscovery.currentReasoningLevelId ?? null
+        );
         this.modelCache = discovery;
         this.emit({
           type: "models-updated",
@@ -520,16 +641,19 @@ export class ChatManager {
       });
 
       const parsed = parseDiscoveredModels(outputChunks.join(""));
-      const models = parsed.length ? parsed : sessionDiscovery?.models ?? [];
+      const models = parsed.length ? parsed : sessionModels;
       const discovery = applyCurrentModel(
         {
           models,
-          currentModelId: sessionDiscovery?.currentModelId ?? currentModelId,
-          discoveredAt: sessionDiscovery?.discoveredAt ?? nowIso(),
-          source: parsed.length ? "prompt" : sessionDiscovery?.source ?? "fallback",
+          currentModelId: sessionModelId,
+          reasoningLevels: sessionReasoningLevels,
+          currentReasoningLevelId: sessionReasoningLevelId,
+          discoveredAt: sessionDiscoveredAt,
+          source: parsed.length ? "prompt" : sessionSource,
           error: !models.length ? "Copilot CLI did not return any models." : undefined
         },
-        currentModelId ?? sessionDiscovery?.currentModelId ?? null
+        currentModelId ?? sessionModelId ?? null,
+        currentReasoningLevelId ?? sessionReasoningLevelId ?? null
       );
 
       this.modelCache = discovery;
@@ -543,8 +667,13 @@ export class ChatManager {
       return discovery;
     } catch (error) {
       const fallback = applyCurrentModel(
-        buildFallbackDiscovery(currentModelId, error instanceof Error ? error.message : "Model discovery failed."),
-        currentModelId
+        buildFallbackDiscovery(
+          currentModelId,
+          currentReasoningLevelId,
+          error instanceof Error ? error.message : "Model discovery failed."
+        ),
+        currentModelId,
+        currentReasoningLevelId
       );
       this.modelCache = fallback;
       this.emit({
@@ -558,7 +687,7 @@ export class ChatManager {
 
   async prepareThread(threadId: string): Promise<ThreadRecord> {
     const thread = await this.requireThread(threadId);
-    return this.normalizeThreadModel(thread);
+    return this.normalizeThreadConfig(thread);
   }
 
   async restartThreadRuntime(threadId: string): Promise<void> {
@@ -569,12 +698,18 @@ export class ChatManager {
 
     runtime.child.kill();
     this.runtimes.delete(threadId);
+    this.modelCache = null;
   }
 
   private async ensureRuntime(thread: ThreadRecord, project: ProjectRecord): Promise<Runtime> {
-    const preparedThread = await this.normalizeThreadModel(thread);
+    const preparedThread = await this.normalizeThreadConfig(thread);
     const existing = this.runtimes.get(preparedThread.id);
-    if (existing && existing.modelId === preparedThread.modelId && existing.projectId === preparedThread.projectId) {
+    if (
+      existing &&
+      existing.modelId === preparedThread.modelId &&
+      existing.reasoningLevelId === preparedThread.reasoningLevelId &&
+      existing.projectId === preparedThread.projectId
+    ) {
       await existing.ready;
       return existing;
     }
@@ -591,6 +726,7 @@ export class ChatManager {
       threadId: preparedThread.id,
       projectId: project.id,
       modelId: preparedThread.modelId,
+      reasoningLevelId: preparedThread.reasoningLevelId ?? "",
       child: null as never,
       connection: null as never,
       sessionId: "",
@@ -619,8 +755,27 @@ export class ChatManager {
       runtime.connection = connection;
       runtime.sessionId = session.sessionId;
 
-      const sessionDiscovery = modelDiscoveryFromSession(session, preparedThread.modelId);
-      if (sessionDiscovery?.models.length) {
+      const reasoningConfig = getReasoningConfig(session.configOptions);
+      if (
+        reasoningConfig &&
+        preparedThread.reasoningLevelId &&
+        preparedThread.reasoningLevelId !== reasoningConfig.currentValue &&
+        reasoningConfig.options.some((option) => option.value === preparedThread.reasoningLevelId)
+      ) {
+        const result = await connection.setSessionConfigOption({
+          sessionId: session.sessionId,
+          configId: reasoningConfig.configId,
+          value: preparedThread.reasoningLevelId
+        });
+        session.configOptions = result.configOptions;
+      }
+
+      const sessionDiscovery = modelDiscoveryFromSession(
+        session,
+        preparedThread.modelId,
+        preparedThread.reasoningLevelId ?? null
+      );
+      if (sessionDiscovery) {
         this.modelCache = sessionDiscovery;
       }
       child.on("exit", () => {
@@ -633,21 +788,42 @@ export class ChatManager {
     return runtime;
   }
 
-  private async normalizeThreadModel(thread: ThreadRecord): Promise<ThreadRecord> {
+  private async normalizeThreadConfig(thread: ThreadRecord): Promise<ThreadRecord> {
     const requestedModelId = thread.modelId.trim();
+    const requestedReasoningLevelId = thread.reasoningLevelId?.trim() ?? "";
     const discovery = await this.getModels(thread.id);
     const availableModelIds = new Set(discovery.models.map((model) => model.modelId));
+    const availableReasoningLevelIds = new Set((discovery.reasoningLevels ?? []).map((level) => level.value));
     const fallbackModelId = discovery.currentModelId ?? discovery.models[0]?.modelId ?? "";
+    const fallbackReasoningLevelId =
+      discovery.currentReasoningLevelId ?? discovery.reasoningLevels?.[0]?.value ?? "";
+    const nextModelId =
+      (!requestedModelId && fallbackModelId) ||
+      (requestedModelId && availableModelIds.size > 0 && !availableModelIds.has(requestedModelId))
+        ? fallbackModelId
+        : thread.modelId;
+    const nextReasoningLevelId =
+      (!requestedReasoningLevelId && fallbackReasoningLevelId) ||
+      (requestedReasoningLevelId &&
+        availableReasoningLevelIds.size > 0 &&
+        !availableReasoningLevelIds.has(requestedReasoningLevelId))
+        ? fallbackReasoningLevelId
+        : (thread.reasoningLevelId ?? "");
     const requiresUpdate =
       (!requestedModelId && Boolean(fallbackModelId)) ||
-      (requestedModelId && availableModelIds.size > 0 && !availableModelIds.has(requestedModelId));
+      (requestedModelId && availableModelIds.size > 0 && !availableModelIds.has(requestedModelId)) ||
+      (!requestedReasoningLevelId && Boolean(fallbackReasoningLevelId)) ||
+      (requestedReasoningLevelId &&
+        availableReasoningLevelIds.size > 0 &&
+        !availableReasoningLevelIds.has(requestedReasoningLevelId));
 
     if (!requiresUpdate) {
       return thread;
     }
 
     const updatedThread = await this.store.updateThread(thread.id, {
-      modelId: fallbackModelId
+      modelId: nextModelId,
+      reasoningLevelId: nextReasoningLevelId
     });
 
     this.emit({
@@ -655,7 +831,8 @@ export class ChatManager {
       threadId: thread.id,
       discovery: {
         ...discovery,
-        currentModelId: fallbackModelId
+        currentModelId: nextModelId,
+        currentReasoningLevelId: nextReasoningLevelId
       }
     });
 
@@ -891,6 +1068,18 @@ export class ChatManager {
         if (update.title) {
           await this.store.updateThread(threadId, {
             title: update.title
+          });
+        }
+        break;
+      }
+      case "config_option_update": {
+        if (this.modelCache) {
+          const discovery = applyConfigOptionsToDiscovery(this.modelCache, update.configOptions);
+          this.modelCache = discovery;
+          this.emit({
+            type: "models-updated",
+            threadId,
+            discovery
           });
         }
         break;
