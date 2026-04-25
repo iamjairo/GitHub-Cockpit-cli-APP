@@ -11,6 +11,9 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionConfigOption,
+  type SessionConfigSelectGroup,
+  type SessionConfigSelectOption,
+  type SessionConfigSelectOptions,
   type SessionNotification,
   type SessionUpdate,
   type ToolCall,
@@ -188,13 +191,13 @@ function mergeReasoningLevels(...groups: ReasoningLevelRecord[][]): ReasoningLev
 }
 
 function flattenSelectOptions(
-  options: SessionConfigOption["options"] | undefined | null
+  options: SessionConfigSelectOptions | undefined | null
 ): ReasoningLevelRecord[] {
   if (!options?.length) {
     return [];
   }
 
-  return options.flatMap((option) =>
+  return options.flatMap((option: SessionConfigSelectOption | SessionConfigSelectGroup) =>
     "value" in option
       ? [
           {
@@ -203,7 +206,7 @@ function flattenSelectOptions(
             description: option.description ?? null
           }
         ]
-      : option.options.map((groupOption) => ({
+      : option.options.map((groupOption: SessionConfigSelectOption) => ({
           value: groupOption.value,
           name: groupOption.name,
           description: groupOption.description ?? null
@@ -215,7 +218,10 @@ function findSelectConfig(
   configOptions: SessionConfigOption[] | undefined | null,
   predicate: (option: SessionConfigOption) => boolean
 ): { configId: string; currentValue: string | null; options: ReasoningLevelRecord[] } | null {
-  const option = configOptions?.find((entry) => entry.type === "select" && predicate(entry));
+  const option = configOptions?.find(
+    (entry): entry is Extract<SessionConfigOption, { type: "select" }> =>
+      entry.type === "select" && predicate(entry)
+  );
   if (!option) {
     return null;
   }
