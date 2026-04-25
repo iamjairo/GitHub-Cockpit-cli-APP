@@ -4,12 +4,16 @@ This directory contains static assets used by `electron-builder` when packaging 
 
 ## Required: App Icon
 
-Before packaging, place a **1024×1024** macOS icon file here:
+Before packaging, place the appropriate icon file(s) here:
 
-- `icon.icns` — macOS icon (required for `.dmg` / `.app` packaging)
-- `icon.png` — Optional 1024×1024 PNG source (electron-builder can auto-convert)
+| File | Platform | Notes |
+|------|----------|-------|
+| `icon.icns` | macOS | Required for `.dmg` / `.app` packaging |
+| `icon.png` | Linux | 1024×1024 PNG — required for AppImage and `.deb` packaging |
 
-### Generating `icon.icns` from a PNG
+> **Tip:** Start with a single **1024×1024 `icon.png`**. electron-builder can auto-convert it to `.icns` for macOS when `icon.icns` is absent, but supplying both is recommended for best results.
+
+### Generating `icon.icns` from a PNG (macOS only)
 
 ```bash
 # Using macOS built-in iconutil

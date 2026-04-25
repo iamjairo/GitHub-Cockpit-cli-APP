@@ -19,7 +19,7 @@ The app lets you add local repositories, create and reopen chat threads, send pr
 
 ## Requirements
 
-- **macOS** (primary platform)
+- **macOS** (primary platform) or **Linux** (x64 / arm64)
 - **Node.js** 22 LTS or later
 - **GitHub Copilot CLI** installed and authenticated
 - **Git** for repository management
@@ -68,6 +68,13 @@ The app lets you add local repositories, create and reopen chat threads, send pr
    # Output appears in dist/
    ```
 
+6. Package as a Linux distributable (`.AppImage` + `.deb`):
+   ```bash
+   # Add build/icon.png first — see build/README.md
+   npm run package:linux
+   # Output appears in dist/
+   ```
+
 ## Usage
 
 1. **Launch Cockpit** - Start the app and it will detect your Copilot CLI installation
@@ -104,6 +111,7 @@ src/
 - `npm run build` - Compile source (typecheck + electron-vite build)
 - `npm run package` - Build + package for current platform
 - `npm run package:mac` - Build + package macOS `.dmg` and `.zip` (arm64 + x64)
+- `npm run package:linux` - Build + package Linux `.AppImage` and `.deb` (x64 + arm64)
 - `npm run test` - Run tests
 - `npm run test:watch` - Run tests in watch mode
 - `npm run test:ui` - Open Vitest UI
