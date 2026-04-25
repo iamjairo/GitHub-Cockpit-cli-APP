@@ -42,7 +42,7 @@
     "@vue/test-utils": "^2.4.6",
     "electron": "^40.9.2",
     "electron-vite": "^5.0.0",
-    "jsdom": "^28.1.0",
+    "jsdom": "^29.0.2",
     "tailwindcss": "^4.2.1",
     "tailwindcss-primeui": "^0.6.1",
     "typescript": "^5.9.3",
