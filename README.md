@@ -61,6 +61,13 @@ The app lets you add local repositories, create and reopen chat threads, send pr
    npm run build
    ```
 
+5. Package as a macOS distributable (`.dmg` + `.zip`):
+   ```bash
+   # Add your app icon first — see build/README.md
+   npm run package:mac
+   # Output appears in dist/
+   ```
+
 ## Usage
 
 1. **Launch Cockpit** - Start the app and it will detect your Copilot CLI installation
@@ -94,7 +101,9 @@ src/
 ### Available Scripts
 
 - `npm run dev` - Start development server
-- `npm run build` - Build for production
+- `npm run build` - Compile source (typecheck + electron-vite build)
+- `npm run package` - Build + package for current platform
+- `npm run package:mac` - Build + package macOS `.dmg` and `.zip` (arm64 + x64)
 - `npm run test` - Run tests
 - `npm run test:watch` - Run tests in watch mode
 - `npm run test:ui` - Open Vitest UI

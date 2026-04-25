@@ -17,6 +17,8 @@
     "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "build": "npm run typecheck && electron-vite build",
+    "package": "npm run build && electron-builder",
+    "package:mac": "npm run build && electron-builder --mac",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
@@ -41,6 +43,7 @@
     "@vitest/ui": "^4.0.18",
     "@vue/test-utils": "^2.4.8",
     "electron": "^40.9.2",
+    "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
     "jsdom": "^29.0.2",
     "tailwindcss": "^4.2.1",
@@ -49,5 +52,35 @@
     "vite": "^7.3.2",
     "vitest": "^4.0.18",
     "vue-tsc": "^3.2.7"
+  },
+  "build": {
+    "appId": "com.cockpit.app",
+    "productName": "Cockpit",
+    "copyright": "Copyright © 2025 Cockpit Contributors",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "!out/**/*.map"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "icon": "build/icon.icns",
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "artifactName": "${productName}-${version}-${arch}.dmg"
+    }
   }
 }
