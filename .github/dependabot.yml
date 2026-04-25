@@ -52,21 +52,21 @@ updates:
           - "patch"
 
   # GitHub Actions - All actions in one PR
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 2
-    labels:
-      - "dependencies"
-      - "github-actions"
-    commit-message:
-      prefix: "deps(actions)"
-    groups:
-      github-actions-all:
-        patterns:
-          - "*"
+  #- package-ecosystem: "github-actions"
+  #  directory: "/"
+  #  schedule:
+  #    interval: "weekly"
+  #    day: "monday"
+  #  open-pull-requests-limit: 2
+  #  labels:
+  #    - "dependencies"
+  #    - "github-actions"
+  #  commit-message:
+  #    prefix: "deps(actions)"
+  #  groups:
+  #    github-actions-all:
+  #      patterns:
+  #        - "*"
 
   # Docker dependencies - Root check
   - package-ecosystem: "docker"
