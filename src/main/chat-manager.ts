@@ -216,7 +216,7 @@ function flattenSelectOptions(
 
 function findSelectConfig(
   configOptions: SessionConfigOption[] | undefined | null,
-  predicate: (option: SessionConfigOption) => boolean
+  predicate: (option: Extract<SessionConfigOption, { type: "select" }>) => boolean
 ): { configId: string; currentValue: string | null; options: ReasoningLevelRecord[] } | null {
   const option = configOptions?.find(
     (entry): entry is Extract<SessionConfigOption, { type: "select" }> =>
