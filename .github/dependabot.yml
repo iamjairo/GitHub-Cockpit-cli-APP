@@ -1,21 +1,21 @@
 version: 2
 updates:
   # Python dependencies - Look in the root for requirements.txt or pyproject.toml
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "python"
-    commit-message:
-      prefix: "deps(python)"
-    groups:
-      python-all:
-        patterns:
-          - "*"
+  #- package-ecosystem: "pip"
+  #  directory: "/"
+  #  schedule:
+  #    interval: "weekly"
+  #    day: "monday"
+  #  open-pull-requests-limit: 5
+  #  labels:
+  #    - "dependencies"
+  #    - "python"
+  #  commit-message:
+  #    prefix: "deps(python)"
+  #  groups:
+  #    python-all:
+  #      patterns:
+  #        - "*"
 
   # npm dependencies - Look in the root for package.json
   - package-ecosystem: "npm"
@@ -69,17 +69,17 @@ updates:
   #        - "*"
 
   # Docker dependencies - Root check
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "monthly"
-    open-pull-requests-limit: 2
-    labels:
-      - "dependencies"
-      - "docker"
-    commit-message:
-      prefix: "deps(docker)"
-    groups:
-      docker-all:
-        patterns:
-          - "*"
+  #- package-ecosystem: "docker"
+  #  directory: "/"
+  #  schedule:
+  #    interval: "monthly"
+  #  open-pull-requests-limit: 2
+  #  labels:
+  #    - "dependencies"
+  #    - "docker"
+  #  commit-message:
+  #    prefix: "deps(docker)"
+  #  groups:
+  #    docker-all:
+  #      patterns:
+  #        - "*"
