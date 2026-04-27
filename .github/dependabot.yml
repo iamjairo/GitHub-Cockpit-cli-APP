@@ -13,7 +13,7 @@ updates:
     commit-message:
       prefix: "deps(npm)"
     groups:
-      vue-ecosystem:
+      frontend-ui:
         patterns:
           - "vue"
           - "@vue/*"
@@ -43,12 +43,6 @@ updates:
           - "vue-tsc"
           - "vitest"
           - "@vitest/*"
-        update-types:
-          - "minor"
-          - "patch"
-      npm-misc:
-        patterns:
-          - "*"
         update-types:
           - "minor"
           - "patch"
