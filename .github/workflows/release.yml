@@ -32,7 +32,7 @@ jobs:
         run: npm ci
 
       - name: Build & package (Linux)
-        run: npm run package:linux
+        run: npm run build && electron-builder --linux --publish never
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
@@ -58,7 +58,7 @@ jobs:
         run: npm ci
 
       - name: Build & package (macOS)
-        run: npm run package:mac
+        run: npm run build && electron-builder --mac --publish never
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4

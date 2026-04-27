@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Electron GUI wrapper for GitHub Copilot CLI.",
+  "author": "Cockpit Contributors",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./out/main/index.js",
@@ -54,9 +55,7 @@
     "vitest": "^4.0.18",
     "vue-tsc": "^3.2.7"
   },
-  "overrides": {
-    "brace-expansion": "^2.1.0"
-  },
+
   "build": {
     "appId": "com.cockpit.app",
     "productName": "Cockpit",
