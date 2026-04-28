@@ -45,7 +45,7 @@
     "@vitest/ui": "^4.0.18",
     "@vue/test-utils": "^2.4.9",
     "electron": "^40.9.2",
-    "electron-builder": "^26.8.1",
+    "electron-builder": "^26.9.0",
     "electron-vite": "^5.0.0",
     "jsdom": "^29.1.0",
     "tailwindcss": "^4.2.1",
@@ -54,6 +54,11 @@
     "vite": "^8.0.10",
     "vitest": "^4.0.18",
     "vue-tsc": "^3.2.7"
+  },
+  "overrides": {
+    "app-builder-lib": {
+      "minimatch": "^9.0.9"
+    }
   },
 
   "build": {
