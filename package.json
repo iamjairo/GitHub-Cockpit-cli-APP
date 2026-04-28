@@ -28,7 +28,7 @@
     "check": "npm run typecheck && npm run test"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.20.0",
+    "@agentclientprotocol/sdk": "^0.21.0",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@primeuix/themes": "^2.0.3",
